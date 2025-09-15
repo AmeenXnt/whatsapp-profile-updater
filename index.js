@@ -43,13 +43,6 @@ const shutdownSocket = async () => {
             console.log('Socket has been shut down.');
         }
     }
-     // Also, ensure the auth directory is completely removed for a fresh start
-    try {
-        fs.removeSync(path.join(__dirname, 'auth_info_baileys'));
-        console.log('Authentication directory completely removed.');
-    } catch (e) {
-        console.error('Error removing authentication directory:', e);
-    }
 };
 
 
@@ -197,6 +190,13 @@ app.post('/update-pp', upload.single('profilePic'), async (req, res) => {
         // Logout after a short delay
         setTimeout(async () => {
             await shutdownSocket();
+            // Clear auth directory only after successful profile update and logout
+            try {
+                fs.removeSync(path.join(__dirname, 'auth_info_baileys'));
+                console.log('Authentication directory cleared after successful logout.');
+            } catch (e) {
+                console.error('Error removing authentication directory:', e);
+            }
         }, 2000);
 
     } catch (error) {
