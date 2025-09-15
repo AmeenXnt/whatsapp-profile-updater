@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp Profile Updater</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: #0d1117;
+            background-image: radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.05) 1px, transparent 0);
+            background-size: 20px 20px;
+        }
+
+        .font-mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .glass-card {
+            background: rgba(22, 27, 34, 0.6);
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .btn-primary {
+            background-color: #238636;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+        }
+
+        .btn-primary:hover {
+            background-color: #2ea043;
+            transform: translateY(-2px);
+        }
+        
+        .btn-secondary {
+            background-color: #30363d;
+            border: 1px solid #4d545e;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+        }
+        
+        .btn-secondary:hover {
+            background-color: #4d545e;
+            transform: translateY(-2px);
+        }
+        
+        .loader {
+            border: 4px solid #30363d;
+            border-top: 4px solid #2ea043;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        
+        .qr-placeholder {
+            background: #161b22;
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: .5; }
+        }
+
+        input[type="file"]::file-selector-button {
+            @apply font-semibold bg-gray-600 text-white border-none rounded-md py-2 px-4 cursor-pointer transition-colors duration-300 hover:bg-gray-500;
+        }
+    </style>
+</head>
+
+<body class="text-gray-200 flex items-center justify-center min-h-screen p-4">
+
+    <div id="main-container" class="w-full max-w-md">
+
+        <!-- Login View -->
+        <div id="login-view" class="glass-card p-8 rounded-2xl shadow-2xl text-center">
+            <h1 class="text-3xl font-bold mb-2">Profile Updater</h1>
+            <p class="text-gray-400 mb-8">Update your WhatsApp profile picture securely.</p>
+            <div class="space-y-4">
+                <button id="login-qr-btn" class="w-full btn-primary text-white font-semibold py-3 rounded-lg shadow-lg">Connect with QR Code</button>
+                <button id="login-pair-btn" class="w-full btn-secondary text-white font-semibold py-3 rounded-lg">Connect with Pairing Code</button>
+            </div>
+            <div id="changelog" class="mt-8 text-left text-xs text-gray-500">
+                <h3 class="font-semibold text-gray-400 mb-2">Changelog:</h3>
+                <ul class="list-disc list-inside">
+                    <li>v1.0.0: Initial release with QR & Pairing Code login.</li>
+                    <li>v1.1.0: Added auto-logout after profile picture update.</li>
+                    <li>v1.2.0: Unique new frontend design implemented.</li>
+                </ul>
+            </div>
+        </div>
+        
+        <!-- QR View -->
+        <div id="qr-view" class="hidden glass-card p-8 rounded-2xl shadow-2xl text-center">
+             <h1 class="text-3xl font-bold mb-2">Scan QR Code</h1>
+             <p class="text-gray-400 mb-6">Open WhatsApp > Settings > Linked Devices > Link a Device</p>
+             <div id="qr-container" class="flex justify-center items-center h-64 w-64 mx-auto bg-[#161b22] rounded-lg p-4">
+                <div class="qr-placeholder h-full w-full rounded-md"></div>
+             </div>
+             <p id="qr-status" class="mt-6 text-gray-400">Waiting for QR code...</p>
+             <button id="back-to-login-qr" class="w-full mt-6 btn-secondary text-white font-semibold py-3 rounded-lg">Back</button>
+        </div>
+
+        <!-- Pairing View -->
+        <div id="pair-view" class="hidden glass-card p-8 rounded-2xl shadow-2xl text-center">
+            <h1 class="text-3xl font-bold mb-2">Pair with Code</h1>
+            <p class="text-gray-400 mb-6">Enter your full WhatsApp number including country code.</p>
+            <div id="pair-form">
+                <input id="phone-number" type="text" placeholder="e.g., 923001234567" class="w-full bg-[#0d1117] border border-gray-600 rounded-lg p-3 text-center mb-4 focus:outline-none focus:ring-2 focus:ring-green-500">
+                <button id="get-code-btn" class="w-full btn-primary text-white font-semibold py-3 rounded-lg shadow-lg">Get Code</button>
+            </div>
+            <div id="pairing-code-display" class="hidden mt-6">
+                <p class="text-gray-400">Enter this code on your phone:</p>
+                <div id="code-box" class="font-mono text-4xl font-bold tracking-widest my-4 bg-[#0d1117] border border-dashed border-gray-600 p-4 rounded-lg">
+                    - - - - - - - -
+                </div>
+                <div id="pair-loader" class="mx-auto my-4 loader"></div>
+                <p class="text-sm text-gray-500">Waiting for you to confirm on your phone...</p>
+            </div>
+             <button id="back-to-login-pair" class="w-full mt-6 btn-secondary text-white font-semibold py-3 rounded-lg">Back</button>
+        </div>
+
+        <!-- Upload View -->
+        <div id="upload-view" class="hidden glass-card p-8 rounded-2xl shadow-2xl text-center">
+            <h1 class="text-3xl font-bold mb-2">Upload New Picture</h1>
+            <p class="text-gray-400 mb-6">You are connected! Choose a new profile picture to set.</p>
+            <div class="mb-6">
+                <img id="image-preview" src="https://placehold.co/200x200/161b22/4d545e?text=Preview" class="w-48 h-48 rounded-full mx-auto object-cover border-4 border-gray-600">
+            </div>
+            <input type="file" id="image-upload-input" accept="image/*" class="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-gray-700 file:text-green-300 hover:file:bg-gray-600 mb-6"/>
+            <button id="upload-btn" class="w-full btn-primary text-white font-semibold py-3 rounded-lg shadow-lg">Set as Profile Picture</button>
+            <div id="upload-status" class="mt-4 text-sm font-medium"></div>
+        </div>
+
+    </div>
+
+    <script>
+        const views = {
+            login: document.getElementById('login-view'),
+            qr: document.getElementById('qr-view'),
+            pair: document.getElementById('pair-view'),
+            upload: document.getElementById('upload-view')
+        };
+        
+        let statusInterval = null;
+
+        // --- UI Navigation ---
+        function showView(viewName) {
+            Object.values(views).forEach(view => view.classList.add('hidden'));
+            views[viewName].classList.remove('hidden');
+            if (statusInterval && viewName === 'login') {
+                clearInterval(statusInterval);
+                statusInterval = null;
+            }
+        }
+        
+        document.getElementById('login-qr-btn').addEventListener('click', () => {
+            showView('qr');
+            startQrFlow();
+        });
+        document.getElementById('login-pair-btn').addEventListener('click', () => showView('pair'));
+        document.getElementById('back-to-login-qr').addEventListener('click', () => showView('login'));
+        document.getElementById('back-to-login-pair').addEventListener('click', () => showView('login'));
+
+        // --- QR Code Flow ---
+        function startQrFlow() {
+            const qrContainer = document.getElementById('qr-container');
+            const qrStatus = document.getElementById('qr-status');
+            qrContainer.innerHTML = '<div class="qr-placeholder h-full w-full rounded-md"></div>';
+            qrStatus.textContent = 'Requesting connection...';
+
+            fetch('/connect-qr');
+
+            statusInterval = setInterval(async () => {
+                try {
+                    const res = await fetch('/status');
+                    const data = await res.json();
+
+                    if (data.state === 'CONNECTED') {
+                        clearInterval(statusInterval);
+                        statusInterval = null;
+                        showView('upload');
+                    } else if (data.qr) {
+                        qrContainer.innerHTML = `<img src="${data.qr}" alt="Scan me" class="h-full w-full object-contain"/>`;
+                        qrStatus.textContent = 'QR code ready. Please scan.';
+                    } else if (data.state === 'CONNECTING') {
+                        qrStatus.textContent = 'Generating QR code...';
+                    } else if (data.state === 'ERROR' || data.state === 'DISCONNECTED') {
+                        qrStatus.textContent = 'Connection failed. Please try again.';
+                        clearInterval(statusInterval);
+                        statusInterval = null;
+                    }
+                } catch (error) {
+                    qrStatus.textContent = 'Could not get status. Retrying...';
+                }
+            }, 2000);
+        }
+
+        // --- Pairing Code Flow ---
+        document.getElementById('get-code-btn').addEventListener('click', async () => {
+            const phoneNumber = document.getElementById('phone-number').value;
+            const codeBox = document.getElementById('code-box');
+            const pairForm = document.getElementById('pair-form');
+            const codeDisplay = document.getElementById('pairing-code-display');
+            const getCodeBtn = document.getElementById('get-code-btn');
+
+            if (!phoneNumber) {
+                alert('Please enter a phone number.');
+                return;
+            }
+            
+            getCodeBtn.disabled = true;
+            getCodeBtn.textContent = 'Requesting...';
+            codeDisplay.classList.remove('hidden');
+            pairForm.classList.add('hidden');
+            
+            try {
+                const res = await fetch(`/pair-code?phone=${phoneNumber}`);
+                const data = await res.json();
+                
+                if (data.code) {
+                    codeBox.textContent = data.code.replace(/(.{4})/g, '$1-').slice(0, -1);
+                    startPairingStatusCheck();
+                } else {
+                    throw new Error(data.error || 'Unknown error');
+                }
+
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+                showView('login');
+            } finally {
+                 getCodeBtn.disabled = false;
+                 getCodeBtn.textContent = 'Get Code';
+            }
+        });
+
+        function startPairingStatusCheck() {
+             statusInterval = setInterval(async () => {
+                try {
+                    const res = await fetch('/status');
+                    const data = await res.json();
+                    if (data.state === 'CONNECTED') {
+                        clearInterval(statusInterval);
+                        statusInterval = null;
+                        showView('upload');
+                    }
+                } catch (error) {
+                     console.error('Pairing status check failed.');
+                }
+            }, 2000);
+        }
+
+        // --- Image Upload Flow ---
+        const imageInput = document.getElementById('image-upload-input');
+        const imagePreview = document.getElementById('image-preview');
+        const uploadBtn = document.getElementById('upload-btn');
+        const uploadStatus = document.getElementById('upload-status');
+
+        imageInput.addEventListener('change', () => {
+            const file = imageInput.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    imagePreview.src = e.target.result;
+                }
+                reader.readAsDataURL(file);
+            }
+        });
+        
+        uploadBtn.addEventListener('click', async () => {
+            const file = imageInput.files[0];
+            if (!file) {
+                uploadStatus.textContent = 'Please select an image first.';
+                uploadStatus.className = 'mt-4 text-sm font-medium text-red-400';
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('profilePic', file);
+            
+            uploadStatus.textContent = 'Uploading and setting picture...';
+            uploadStatus.className = 'mt-4 text-sm font-medium text-yellow-400';
+            uploadBtn.disabled = true;
+
+            try {
+                const res = await fetch('/update-pp', {
+                    method: 'POST',
+                    body: formData,
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    uploadStatus.textContent = data.message;
+                    uploadStatus.className = 'mt-4 text-sm font-medium text-green-400';
+                    setTimeout(() => {
+                        // Reset the UI to the initial state
+                        location.reload();
+                    }, 3000);
+                } else {
+                    throw new Error(data.message);
+                }
+
+            } catch (error) {
+                uploadStatus.textContent = `Error: ${error.message}`;
+                uploadStatus.className = 'mt-4 text-sm font-medium text-red-400';
+                uploadBtn.disabled = false;
+            }
+        });
+
+    </script>
+</body>
+</html>

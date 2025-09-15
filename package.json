@@ -1,0 +1,21 @@
+{
+  "name": "whatsapp-profile-updater",
+  "version": "1.0.0",
+  "description": "A web app to update WhatsApp profile pictures.",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "author": "〆༯𝙎ค૯𝙀𝘿✘🫀",
+  "license": "MIT",
+  "dependencies": {
+    "@hapi/boom": "^10.0.1",
+    "@whiskeysockets/baileys": "^6.7.2",
+    "express": "^4.19.2",
+    "fs-extra": "^11.3.1",
+    "multer": "^1.4.5-lts.1",
+    "pino": "^8.21.0",
+    "qrcode": "^1.5.3"
+  }
+}
