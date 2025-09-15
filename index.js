@@ -63,13 +63,40 @@ const initializeSocket = () => {
             version,
             logger: pino({ level: 'silent' }),
             printQRInTerminal: false,
-            // --- Final Fix: Using the most common Windows Browser Identity ---
-            browser: Browsers.windows('Chrome'),
+            // --- Use appropriate browser identity ---
+            browser: Browsers.macOS('Desktop'),
             auth: state,
-            // --- Extending QR Code Timeout ---
-            qrTimeout: 60000, // 60 seconds
-            // --- We don't need history, so we disable it for a faster, cleaner connection ---
+            // --- Connection settings for stability ---
+            qrTimeout: 120000, // 2 minutes
+            connectTimeoutMs: 60000,
+            defaultQueryTimeoutMs: 60000,
+            keepAliveIntervalMs: 10000,
+            // --- Disable unnecessary features for cleaner connection ---
             syncFullHistory: false,
+            markOnlineOnConnect: false,
+            fireInitQueries: false,
+            generateHighQualityLinkPreview: false,
+            patchMessageBeforeSending: (message) => {
+                const requiresPatch = !!(
+                    message.buttonsMessage ||
+                    message.templateMessage ||
+                    message.listMessage
+                );
+                if (requiresPatch) {
+                    message = {
+                        viewOnceMessage: {
+                            message: {
+                                messageContextInfo: {
+                                    deviceListMetadataVersion: 2,
+                                    deviceListMetadata: {},
+                                },
+                                ...message,
+                            },
+                        },
+                    };
+                }
+                return message;
+            },
         });
 
         sock.ev.on('connection.update', async (update) => {
@@ -81,14 +108,24 @@ const initializeSocket = () => {
             }
 
             if (connection === 'close') {
-                const boomError = lastDisconnect.error instanceof Boom ? lastDisconnect.error : undefined;
+                const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+                const boomError = lastDisconnect?.error instanceof Boom ? lastDisconnect.error : undefined;
                 
                 console.log('Connection closed. Reason:', lastDisconnect.error);
                 if(boomError){
                     console.error('Boom Error Details:', boomError.output);
                 }
 
-                // We will let the user re-initiate instead of auto-reconnecting
+                // Handle different disconnect reasons
+                if (shouldReconnect && lastDisconnect?.error?.output?.statusCode === DisconnectReason.restartRequired) {
+                    console.log('Restart required, reconnecting...');
+                    setTimeout(() => {
+                        connectToWhatsApp().catch(console.error);
+                    }, 5000);
+                    return;
+                }
+                
+                // For other disconnections, reset state
                 sock = null;
                 qrCodeData = null;
                 connectionState = 'DISCONNECTED';
@@ -97,16 +134,30 @@ const initializeSocket = () => {
                 console.log('WhatsApp connection opened successfully.');
                 connectionState = 'CONNECTED';
                 qrCodeData = null; // QR is no longer needed
+            } else if (connection === 'connecting') {
+                console.log('Connecting to WhatsApp...');
+                connectionState = 'CONNECTING';
             }
         });
 
         sock.ev.on('creds.update', saveCreds);
+        
+        // Handle messaging updates to prevent crashes
+        sock.ev.on('messages.upsert', () => {
+            // Ignore incoming messages to prevent processing overhead
+        });
+        
+        // Handle presence updates
+        sock.ev.on('presence.update', () => {
+            // Ignore presence updates
+        });
     }
 
     connectToWhatsApp().catch(err => {
         console.error("Failed to connect to WhatsApp:", err);
         connectionState = 'ERROR';
         sock = null;
+        qrCodeData = null;
     });
 };
 
@@ -192,19 +243,25 @@ app.post('/update-pp', upload.single('profilePic'), async (req, res) => {
             await shutdownSocket();
             // Clear auth directory only after successful profile update and logout
             try {
-                fs.removeSync(path.join(__dirname, 'auth_info_baileys'));
-                console.log('Authentication directory cleared after successful logout.');
+                if (fs.existsSync(path.join(__dirname, 'auth_info_baileys'))) {
+                    fs.removeSync(path.join(__dirname, 'auth_info_baileys'));
+                    console.log('Authentication directory cleared after successful logout.');
+                }
             } catch (e) {
                 console.error('Error removing authentication directory:', e);
             }
-        }, 2000);
+        }, 3000);
 
     } catch (error) {
         console.error('Failed to update profile picture:', error);
         res.status(500).json({ success: false, message: 'An error occurred while updating the picture.' });
     } finally {
         // Clean up the uploaded file
-        await fs.unlink(filePath);
+        try {
+            await fs.unlink(filePath);
+        } catch (e) {
+            console.error('Error removing uploaded file:', e);
+        }
     }
 });
 
