@@ -5,7 +5,7 @@ const {
     Browsers,
     DisconnectReason,
     fetchLatestBaileysVersion
-} = require('@whiskeysockets/baileys');
+} = require('baileys');
 const pino = require('pino');
 const { Boom } = require('@hapi/boom');
 const qrcode = require('qrcode');
