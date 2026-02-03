@@ -564,7 +564,7 @@ const qrcode = require('qrcode');
 const fs = require('fs-extra');
 const multer = require('multer');
 const path = require('path');
-
+const Jimp = require("jimp")
 // IMPORTANT: image processing library for Baileys
 require('sharp');
 
@@ -740,9 +740,9 @@ app.post('/update-pp', upload.single('profilePic'), async (req, res) => {
   // Process the image
   const img = await cropped.scaleToFit(720, 720).getBufferAsync(Jimp.MIME_JPEG);
   const preview = await cropped.normalize().getBufferAsync(Jimp.MIME_JPEG);
-
+console.log(sock.query)
   // Send profile picture update
-  await conn.query({
+  await sock.query({
     tag: 'iq',
     attrs: {
       //target: conn.user.jid,
