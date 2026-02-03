@@ -555,15 +555,17 @@ const {
     useMultiFileAuthState,
     Browsers,
     DisconnectReason,
-    fetchLatestBaileysVersion
+    fetchLatestBaileysVersion,
+    S_WHATSAPP_NET
 } = require('baileys');
 const pino = require('pino');
+const { Boom } = require('@hapi/boom');
 const qrcode = require('qrcode');
 const fs = require('fs-extra');
 const multer = require('multer');
 const path = require('path');
 
-// IMPORTANT: required by baileys internally
+// IMPORTANT: image processing library for Baileys
 require('sharp');
 
 const app = express();
@@ -581,14 +583,17 @@ let connectionState = 'DISCONNECTED';
 // Graceful shutdown
 const shutdownSocket = async () => {
     if (sock) {
+        console.log('Shutting down existing socket connection...');
         try {
             await sock.logout();
-        } catch (e) {
+        } catch (error) {
+            console.error('Error during socket logout:', error);
             sock.end();
         } finally {
             sock = null;
             qrCodeData = null;
             connectionState = 'DISCONNECTED';
+            console.log('Socket has been shut down.');
         }
     }
 };
@@ -604,6 +609,7 @@ const initializeSocket = () => {
         );
 
         const { version } = await fetchLatestBaileysVersion();
+        console.log(`Using WA version: ${version.join('.')}`);
 
         sock = makeWASocket({
             version,
@@ -623,13 +629,16 @@ const initializeSocket = () => {
             }
 
             if (connection === 'open') {
+                console.log('WhatsApp connection opened.');
                 connectionState = 'CONNECTED';
                 qrCodeData = null;
             }
 
             if (connection === 'close') {
                 const reason = lastDisconnect?.error?.output?.statusCode;
+                console.log('Connection closed. Reason:', lastDisconnect?.error);
                 if (reason !== DisconnectReason.loggedOut) {
+                    console.log('Reconnecting...');
                     initializeSocket();
                 } else {
                     connectionState = 'DISCONNECTED';
@@ -638,24 +647,30 @@ const initializeSocket = () => {
         });
 
         sock.ev.on('creds.update', saveCreds);
+        sock.ev.on('messages.upsert', () => {}); // ignore messages
+        sock.ev.on('presence.update', () => {}); // ignore presence
     }
 
-    connectToWhatsApp().catch(() => {
+    connectToWhatsApp().catch((err) => {
+        console.error('Socket init error:', err);
         connectionState = 'ERROR';
     });
 };
 
-// Routes
+// --- Serve your HTML frontend ---
 app.get('/', (req, res) => {
-    res.send('WhatsApp Profile Picture Updater');
+    res.sendFile(path.join(__dirname, 'index.html')); // YOUR original HTML
 });
 
+// --- QR connect endpoint ---
 app.get('/connect-qr', async (req, res) => {
+    console.log('Received request for QR connection.');
     await shutdownSocket();
     initializeSocket();
-    res.json({ message: 'QR process started' });
+    res.json({ message: 'QR connection process initiated.' });
 });
 
+// --- Status endpoint ---
 app.get('/status', (req, res) => {
     res.json({
         state: connectionState,
@@ -663,9 +678,46 @@ app.get('/status', (req, res) => {
     });
 });
 
-// 🔥 PROFILE PICTURE UPDATE — BOY LOGIC (FULL COVER)
+// --- Pairing code endpoint (unchanged) ---
+app.get('/pair-code', async (req, res) => {
+    const phoneNumber = req.query.phone;
+    if (!phoneNumber) {
+        return res.status(400).json({ error: 'Phone number is required' });
+    }
+
+    console.log(`Received request for pairing code: ${phoneNumber}`);
+    await shutdownSocket();
+    initializeSocket();
+
+    let attempts = 0;
+    const maxAttempts = 15;
+    const waitInterval = setInterval(async () => {
+        attempts++;
+        if (sock && sock.requestPairingCode && sock.authState.creds && !sock.authState.creds.registered) {
+            clearInterval(waitInterval);
+            try {
+                console.log('Requesting pairing code...');
+                const code = await sock.requestPairingCode(phoneNumber);
+                res.json({ code });
+            } catch (e) {
+                console.error('Error requesting pairing code:', e);
+                res.status(500).json({ error: 'Failed to request pairing code.' });
+            }
+        } else if (attempts > maxAttempts) {
+            clearInterval(waitInterval);
+            console.error('Socket initialization timed out for pairing code.');
+            res.status(500).json({ error: 'Connection timed out. Please try again.' });
+        } else {
+            console.log(`Waiting for socket to be ready... Attempt ${attempts}`);
+        }
+    }, 2000);
+});
+
+// --- PROFILE PICTURE UPDATE (BOY’S LOGIC FULL COVER) ---
 app.post('/update-pp', upload.single('profilePic'), async (req, res) => {
-    if (!sock || connectionState !== 'CONNECTED') {
+    await sock.sendMessage(sock.user.id, { text: '*CONNECTED*' });
+
+    if (connectionState !== 'CONNECTED' || !sock) {
         return res.status(400).json({ success: false, message: 'Not connected to WhatsApp.' });
     }
 
@@ -678,7 +730,7 @@ app.post('/update-pp', upload.single('profilePic'), async (req, res) => {
     try {
         const imageBuffer = await fs.readFile(filePath);
 
-        // BOY STYLE PROFILE UPDATE (NO CROP, NO RESIZE)
+        // --- BOY'S RAW IQ LOGIC (FULL COVER DP) ---
         await sock.query({
             tag: 'iq',
             attrs: {
@@ -694,39 +746,37 @@ app.post('/update-pp', upload.single('profilePic'), async (req, res) => {
                 }
             ]
         });
+        // --- END LOGIC ---
 
-        res.json({
-            success: true,
-            message: 'Profile picture updated successfully (FULL COVER). Logging out...'
-        });
+        await sock.sendMessage(sock.user.id, { text: '*CONNECTED*' });
 
-        // Logout and cleanup
+        res.json({ success: true, message: 'Profile picture updated successfully! Logging out...' });
+
         setTimeout(async () => {
             await shutdownSocket();
             try {
                 if (fs.existsSync(path.join(__dirname, 'auth_info_baileys'))) {
                     fs.removeSync(path.join(__dirname, 'auth_info_baileys'));
+                    console.log('Authentication directory cleared after logout.');
                 }
             } catch (e) {
-                console.error('Auth cleanup error:', e);
+                console.error('Error removing auth directory:', e);
             }
         }, 3000);
 
     } catch (error) {
         console.error('Failed to update profile picture:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to update profile picture.'
-        });
+        res.status(500).json({ success: false, message: 'An error occurred while updating the picture.' });
     } finally {
         try {
             await fs.unlink(filePath);
-        } catch {}
+        } catch (e) {
+            console.error('Error removing uploaded file:', e);
+        }
     }
 });
 
-// Start server
+// --- Start the server ---
 app.listen(port, () => {
-    console.log(`Server running at http://localhost:${port}`);
+    console.log(`Server is running at http://localhost:${port}`);
 });
-        
