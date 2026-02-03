@@ -549,7 +549,6 @@ app.listen(port, () => {
 });
 */
 
-
 const express = require('express');
 const {
     default: makeWASocket,
@@ -730,3 +729,4 @@ app.post('/update-pp', upload.single('profilePic'), async (req, res) => {
 app.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);
 });
+        
