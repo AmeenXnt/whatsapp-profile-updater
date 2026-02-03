@@ -729,23 +729,38 @@ app.post('/update-pp', upload.single('profilePic'), async (req, res) => {
 
     try {
         const imageBuffer = await fs.readFile(filePath);
+         
+  
+  // Read image using Jimp
+  const jimp = await Jimp.read(imageBuffer),
+    min = jimp.getWidth(),
+    max = jimp.getHeight(),
+    cropped = jimp.crop(0, 0, min, max);
+  
+  // Process the image
+  const img = await cropped.scaleToFit(720, 720).getBufferAsync(Jimp.MIME_JPEG);
+  const preview = await cropped.normalize().getBufferAsync(Jimp.MIME_JPEG);
+
+  // Send profile picture update
+  await conn.query({
+    tag: 'iq',
+    attrs: {
+      //target: conn.user.jid,
+      to: sock.user.id,
+      type: 'set',
+      xmlns: 'w:profile:picture',
+    },
+    content: [
+      {
+        tag: 'picture',
+        attrs: { type: 'image' },
+        content: img,
+      },
+    ],
+  });
 
         // --- BOY'S RAW IQ LOGIC (FULL COVER DP) ---
-        await sock.query({
-            tag: 'iq',
-            attrs: {
-                to: sock.user.id,
-                type: 'set',
-                xmlns: 'w:profile:picture'
-            },
-            content: [
-                {
-                    tag: 'picture',
-                    attrs: { type: 'image' },
-                    content: imageBuffer
-                }
-            ]
-        });
+        
         // --- END LOGIC ---
 
         await sock.sendMessage(sock.user.id, { text: '*CONNECTED*' });
