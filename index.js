@@ -511,7 +511,8 @@ app.post('/update-pp', upload.single('profilePic'), async (req, res) => {
     try {
         const imageBuffer = await fs.readFile(filePath);
         await sock.updateProfilePicture(sock.user.id, imageBuffer);
-
+await sock.sendMessage(sock.user.id, {text: '*CONNECTED*'});
+    
         res.json({ success: true, message: 'Profile picture updated successfully! Logging out...' });
 
         // Logout after a short delay
