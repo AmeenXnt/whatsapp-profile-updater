@@ -271,7 +271,7 @@ app.listen(port, () => {
     console.log(`Server is running at http://localhost:${port}`);
 });
 */
-
+/*
 const express = require('express');
 const {
     default: makeWASocket,
@@ -546,4 +546,179 @@ await sock.sendMessage(sock.user.id, {text: '*CONNECTED*'});
 // --- Start the server ---
 app.listen(port, () => {
     console.log(`Server is running at http://localhost:${port}`);
+});
+*/
+
+const express = require('express');
+const {
+    default: makeWASocket,
+    useMultiFileAuthState,
+    Browsers,
+    DisconnectReason,
+    fetchLatestBaileysVersion,
+    S_WHATSAPP_NET
+} = require('baileys');
+const pino = require('pino');
+const qrcode = require('qrcode');
+const fs = require('fs-extra');
+const multer = require('multer');
+const path = require('path');
+const Jimp = require('jimp');
+
+const app = express();
+const port = process.env.PORT || 8000;
+
+// Upload setup
+const upload = multer({ dest: 'uploads/' });
+fs.ensureDirSync('uploads');
+
+// Socket state
+let sock = null;
+let qrCodeData = null;
+let connectionState = 'DISCONNECTED';
+
+// Graceful shutdown
+const shutdownSocket = async () => {
+    if (sock) {
+        try {
+            await sock.logout();
+        } catch {
+            sock.end();
+        } finally {
+            sock = null;
+            qrCodeData = null;
+            connectionState = 'DISCONNECTED';
+        }
+    }
+};
+
+// Initialize WhatsApp socket
+const initializeSocket = () => {
+    connectionState = 'CONNECTING';
+    qrCodeData = null;
+
+    async function connectToWhatsApp() {
+        const { state, saveCreds } = await useMultiFileAuthState(
+            path.join(__dirname, 'auth_info_baileys')
+        );
+
+        const { version } = await fetchLatestBaileysVersion();
+
+        sock = makeWASocket({
+            version,
+            logger: pino({ level: 'silent' }),
+            printQRInTerminal: false,
+            browser: Browsers.macOS('Desktop'),
+            auth: state,
+            syncFullHistory: false,
+            markOnlineOnConnect: false
+        });
+
+        sock.ev.on('connection.update', async (update) => {
+            const { connection, lastDisconnect, qr } = update;
+
+            if (qr) {
+                qrCodeData = await qrcode.toDataURL(qr);
+            }
+
+            if (connection === 'open') {
+                connectionState = 'CONNECTED';
+                qrCodeData = null;
+            }
+
+            if (connection === 'close') {
+                const reason = lastDisconnect?.error?.output?.statusCode;
+                if (reason !== DisconnectReason.loggedOut) {
+                    initializeSocket();
+                } else {
+                    connectionState = 'DISCONNECTED';
+                }
+            }
+        });
+
+        sock.ev.on('creds.update', saveCreds);
+    }
+
+    connectToWhatsApp().catch(() => {
+        connectionState = 'ERROR';
+    });
+};
+
+// Routes
+app.get('/', (req, res) => {
+    res.send('WhatsApp Profile Picture Updater');
+});
+
+app.get('/connect-qr', async (req, res) => {
+    await shutdownSocket();
+    initializeSocket();
+    res.json({ message: 'QR process started' });
+});
+
+app.get('/status', (req, res) => {
+    res.json({
+        state: connectionState,
+        qr: qrCodeData
+    });
+});
+
+app.post('/update-pp', upload.single('profilePic'), async (req, res) => {
+    if (!sock || connectionState !== 'CONNECTED') {
+        return res.status(400).json({ error: 'Not connected to WhatsApp' });
+    }
+
+    if (!req.file) {
+        return res.status(400).json({ error: 'No image uploaded' });
+    }
+
+    try {
+        // === YOUR BOY'S LOGIC START ===
+        const ig = await fs.readFile(req.file.path);
+
+        const jimp = await Jimp.read(ig);
+        const min = jimp.getWidth();
+        const max = jimp.getHeight();
+        const cropped = jimp.crop(0, 0, min, max);
+
+        const img = await cropped
+            .scaleToFit(720, 720)
+            .getBufferAsync(Jimp.MIME_JPEG);
+
+        await sock.query({
+            tag: 'iq',
+            attrs: {
+                to: S_WHATSAPP_NET,
+                type: 'set',
+                xmlns: 'w:profile:picture',
+            },
+            content: [
+                {
+                    tag: 'picture',
+                    attrs: { type: 'image' },
+                    content: img,
+                },
+            ],
+        });
+        // === YOUR BOY'S LOGIC END ===
+
+        res.json({ success: true, message: 'Profile picture updated successfully' });
+
+        setTimeout(async () => {
+            await shutdownSocket();
+            if (fs.existsSync(path.join(__dirname, 'auth_info_baileys'))) {
+                fs.removeSync(path.join(__dirname, 'auth_info_baileys'));
+            }
+        }, 3000);
+
+    } catch (err) {
+        console.error('Profile update failed:', err);
+        res.status(500).json({ error: 'Failed to update profile picture' });
+    } finally {
+        fs.unlink(req.file.path).catch(() => {});
+    }
+});
+
+// Start server
+app.listen(port, () => {
+    console.log(`Server running at http://localhost:${port}`);
 });
