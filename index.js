@@ -271,7 +271,7 @@ app.listen(port, () => {
     console.log(`Server is running at http://localhost:${port}`);
 });
 */
-/*
+
 const express = require('express');
 const {
     default: makeWASocket,
@@ -547,8 +547,8 @@ await sock.sendMessage(sock.user.id, {text: '*CONNECTED*'});
 app.listen(port, () => {
     console.log(`Server is running at http://localhost:${port}`);
 });
-*/
 
+/*
 const express = require('express');
 const {
     default: makeWASocket,
@@ -722,3 +722,4 @@ app.post('/update-pp', upload.single('profilePic'), async (req, res) => {
 app.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);
 });
+*/
