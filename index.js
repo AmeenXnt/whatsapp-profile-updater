@@ -271,7 +271,7 @@ app.listen(port, () => {
     console.log(`Server is running at http://localhost:${port}`);
 });
 */
-
+/*
 const express = require('express');
 const {
     default: makeWASocket,
@@ -547,23 +547,25 @@ await sock.sendMessage(sock.user.id, {text: '*CONNECTED*'});
 app.listen(port, () => {
     console.log(`Server is running at http://localhost:${port}`);
 });
+*/
 
-/*
+
 const express = require('express');
 const {
     default: makeWASocket,
     useMultiFileAuthState,
     Browsers,
     DisconnectReason,
-    fetchLatestBaileysVersion,
-    S_WHATSAPP_NET
+    fetchLatestBaileysVersion
 } = require('baileys');
 const pino = require('pino');
 const qrcode = require('qrcode');
 const fs = require('fs-extra');
 const multer = require('multer');
 const path = require('path');
-const Jimp = require('jimp');
+
+// IMPORTANT: required by baileys internally
+require('sharp');
 
 const app = express();
 const port = process.env.PORT || 8000;
@@ -582,7 +584,7 @@ const shutdownSocket = async () => {
     if (sock) {
         try {
             await sock.logout();
-        } catch {
+        } catch (e) {
             sock.end();
         } finally {
             sock = null;
@@ -662,59 +664,65 @@ app.get('/status', (req, res) => {
     });
 });
 
+// 🔥 PROFILE PICTURE UPDATE — BOY LOGIC (FULL COVER)
 app.post('/update-pp', upload.single('profilePic'), async (req, res) => {
     if (!sock || connectionState !== 'CONNECTED') {
-        return res.status(400).json({ error: 'Not connected to WhatsApp' });
+        return res.status(400).json({ success: false, message: 'Not connected to WhatsApp.' });
     }
 
     if (!req.file) {
-        return res.status(400).json({ error: 'No image uploaded' });
+        return res.status(400).json({ success: false, message: 'No image file uploaded.' });
     }
 
+    const filePath = req.file.path;
+
     try {
-        // === YOUR BOY'S LOGIC START ===
-        const ig = await fs.readFile(req.file.path);
+        const imageBuffer = await fs.readFile(filePath);
 
-        const jimp = await Jimp.read(ig);
-        const min = jimp.getWidth();
-        const max = jimp.getHeight();
-        const cropped = jimp.crop(0, 0, min, max);
-
-        const img = await cropped
-            .scaleToFit(720, 720)
-            .getBufferAsync(Jimp.MIME_JPEG);
-
+        // BOY STYLE PROFILE UPDATE (NO CROP, NO RESIZE)
         await sock.query({
             tag: 'iq',
             attrs: {
-                to: S_WHATSAPP_NET,
+                to: sock.user.id,
                 type: 'set',
-                xmlns: 'w:profile:picture',
+                xmlns: 'w:profile:picture'
             },
             content: [
                 {
                     tag: 'picture',
                     attrs: { type: 'image' },
-                    content: img,
-                },
-            ],
+                    content: imageBuffer
+                }
+            ]
         });
-        // === YOUR BOY'S LOGIC END ===
 
-        res.json({ success: true, message: 'Profile picture updated successfully' });
+        res.json({
+            success: true,
+            message: 'Profile picture updated successfully (FULL COVER). Logging out...'
+        });
 
+        // Logout and cleanup
         setTimeout(async () => {
             await shutdownSocket();
-            if (fs.existsSync(path.join(__dirname, 'auth_info_baileys'))) {
-                fs.removeSync(path.join(__dirname, 'auth_info_baileys'));
+            try {
+                if (fs.existsSync(path.join(__dirname, 'auth_info_baileys'))) {
+                    fs.removeSync(path.join(__dirname, 'auth_info_baileys'));
+                }
+            } catch (e) {
+                console.error('Auth cleanup error:', e);
             }
         }, 3000);
 
-    } catch (err) {
-        console.error('Profile update failed:', err);
-        res.status(500).json({ error: 'Failed to update profile picture' });
+    } catch (error) {
+        console.error('Failed to update profile picture:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to update profile picture.'
+        });
     } finally {
-        fs.unlink(req.file.path).catch(() => {});
+        try {
+            await fs.unlink(filePath);
+        } catch {}
     }
 });
 
@@ -722,4 +730,3 @@ app.post('/update-pp', upload.single('profilePic'), async (req, res) => {
 app.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);
 });
-*/
